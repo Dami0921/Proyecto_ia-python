@@ -1,0 +1,12 @@
+.git 
+.gitignore 
+.github 
+.vscode 
+__pycache__ 
+*.pyc 
+.ipynb_checkpoints 
+.venv 
+venv 
+data 
+tests 
+README.md 
