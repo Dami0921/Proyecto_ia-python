@@ -10,6 +10,8 @@ de recolección y transporte de residuos.
 
 import csv
 
+from config import RUTA_CSV
+
 
 def convertir_numero(valor):
     """
@@ -33,7 +35,7 @@ def convertir_numero(valor):
             return valor
 
 
-def leer_datos(ruta_archivo):
+def leer_datos(ruta_archivo=RUTA_CSV):
     """
     Lee un archivo CSV y lo convierte en una lista de diccionarios.
 
@@ -44,20 +46,23 @@ def leer_datos(ruta_archivo):
         {"ruta_id": 1, "conductor": "Juan Perez", "toneladas": 8.5},
         {"ruta_id": 2, "conductor": "Carlos Ruiz", "toneladas": 9.2},
     ]
+
+    Si el archivo no existe se lanza FileNotFoundError (quien llama decide
+    como manejarlo). Se usa utf-8-sig para que tambien funcione con CSV
+    exportados desde Excel, que suelen traer una marca BOM al inicio.
     """
     lista_datos = []
 
-    archivo = open(ruta_archivo, mode="r", encoding="utf-8")
-    lector = csv.DictReader(archivo)
+    with open(ruta_archivo, mode="r", encoding="utf-8-sig", newline="") as archivo:
+        lector = csv.DictReader(archivo)
 
-    for fila in lector:
-        diccionario = {}
-        for clave in fila:
-            valor_texto = fila[clave]
-            diccionario[clave] = convertir_numero(valor_texto)
-        lista_datos.append(diccionario)
+        for fila in lector:
+            diccionario = {}
+            for clave in fila:
+                valor_texto = fila[clave]
+                diccionario[clave] = convertir_numero(valor_texto)
+            lista_datos.append(diccionario)
 
-    archivo.close()
     return lista_datos
 
 
@@ -99,7 +104,5 @@ def mostrar_resumen(datos, columna):
 
 
 if __name__ == "__main__":
-    datos = leer_datos("../data/rutas_ejemplo.csv")
+    datos = leer_datos(RUTA_CSV)
     mostrar_resumen(datos, "toneladas")
-
- 

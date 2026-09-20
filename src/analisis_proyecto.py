@@ -5,6 +5,7 @@ Markdown con estadisticas del proyecto de optimizacion de rutas de residuos.
 """
 
 from cargar_datos import leer_datos
+from config import RUTA_CSV, RUTA_INFORME
 
 
 def calcular_estadisticas(datos):
@@ -102,7 +103,7 @@ def generar_informe(estadisticas, archivo_salida):
 
 
 if __name__ == "__main__":
-    datos = leer_datos("../data/rutas_ejemplo.csv")
+    datos = leer_datos(RUTA_CSV)
     estadisticas = calcular_estadisticas(datos)
-    generar_informe(estadisticas, "../informe_proyecto.md")
+    generar_informe(estadisticas, RUTA_INFORME)
     print("Informe generado correctamente: informe_proyecto.md")
