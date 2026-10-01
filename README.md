@@ -197,3 +197,23 @@ docker --version
 - [x] Código fuente en GitHub, con commits regulares.
 - [x] Documentación (README.md).
 - [ ] Presentación final con demo.
+
+
+## Preparación de Datos
+
+Script: `src/preparacion_datos.py` — dataset: `data/rutas_clase8.csv` (12 rutas, datos ficticios con la estructura real de la empresa).
+
+**Valores nulos:** 2 en `km_recorridos` y 1 en `combustible_tanqueado`. Se imputaron con la mediana de cada columna (63.25 km y 14.0 galones), porque es robusta a valores extremos. `toneladas` (variable objetivo) no se imputa.
+
+**Variables categóricas:** `conductor` se codificó con One-Hot (`pd.get_dummies`), porque es nominal y no tiene orden.
+
+**Columnas derivadas:**
+- `duracion_ruta_min`: minutos entre inicio y fin de ruta; resume los tiempos de viaje en un número.
+- `toneladas_por_km`: rendimiento de recolección. Se usa para análisis, pero se excluye del modelo porque se calcula con la variable objetivo (data leakage).
+
+**Hallazgos de las visualizaciones:**
+- Hay relación positiva entre km recorridos y toneladas recolectadas.
+- Andrés Mejía acumula más toneladas (33.5 t) que Carlos Ruiz (30.4 t) y Luis Gómez (24.5 t). Luis siempre sale con 2 tripulantes y los otros con 3, así que el tamaño de la tripulación puede influir.
+- Las toneladas por ruta se concentran entre 5.9 y 8.7 t.
+
+**Salida:** `data/rutas_preparadas_ml.csv` (8 columnas, listo para el train/test split).
