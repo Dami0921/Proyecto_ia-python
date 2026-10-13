@@ -229,3 +229,15 @@ Script: `src/preparacion_datos.py` — dataset: `data/rutas_clase8.csv` (12 ruta
 La etiqueta `alto_desempeno` vale 1 cuando se cumplen ambas condiciones. De las 12 rutas, solo la 1 y la 7 lo cumplen. La neurona aprendió en **3 épocas** (error 4, 4 y 0) y clasificó correctamente las 12.
 
 **Limitación:** la etiqueta se define con una regla AND, así que la neurona redescubre esa regla y no un patrón nuevo. El ejercicio sirve para ver el mecanismo de pesos, error y corrección sobre datos del proyecto. Cuando haya un modelo de predicción real, la variable objetivo será `toneladas`, que es continua.
+
+## Clase 8: Actividad independiente (compuertas OR y NOT)
+
+Script: `src/neuronas_logicas.py`. Gráfica del error: `data/evolucion_error_logicas.png`.
+
+**¿Cuántas épocas necesitó cada compuerta para aprender?** OR aprendió en 2 épocas (error 1 y 0) y NOT en 4 épocas (error 1, 2, 1 y 0). AND, de la actividad en clase, necesitó 3 épocas (error 3, 3 y 0).
+
+**¿Fue necesario ajustar la tasa de aprendizaje? ¿Por qué?** No. Con α = 0.1 las tres compuertas aprendieron sin oscilar y en pocas épocas, así que no hizo falta cambiarla. Con una tasa mucho mayor, cada corrección sería tan grande que los parámetros se pasarían de largo y el error podría oscilar sin converger. Con una muy baja converge igual, pero necesita muchas más épocas.
+
+**¿Qué diferencias hay entre AND y OR?** AND solo da 1 cuando ambas entradas son 1, así que la neurona debe ser "exigente": terminó con un bias negativo (-0.2) y pesos que solo superan el umbral si suman las dos entradas. OR da 1 con que una entrada sea 1, así que basta un umbral bajo: terminó con pesos 0.1 y 0.1 y un bias de solo -0.1, de modo que cualquier entrada activa pasa el umbral. OR aprendió más rápido (2 épocas contra 3) porque los parámetros iniciales ya estaban cerca de la solución, y solo fallaba el caso (0,0). NOT difiere en que tiene una sola entrada y su peso terminó negativo (-0.1), de modo que la entrada 1 resta y apaga la neurona, mientras que con entrada 0 el bias (0.0) alcanza para activarla.
+
+**¿Por qué la compuerta XOR no puede ser aprendida por una sola neurona?** Una neurona con función escalón separa las clases con una única línea recta. En XOR, las salidas 1 están en (0,1) y (1,0), y las salidas 0 en (0,0) y (1,1), es decir, en diagonal. Ninguna recta deja los dos puntos de cada clase del mismo lado, así que XOR no es linealmente separable. Minsky y Papert lo demostraron en 1969 para el perceptrón simple. Se resuelve combinando varias neuronas en capas (una capa oculta), que es la base de las redes neuronales.
