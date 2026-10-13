@@ -217,3 +217,15 @@ Script: `src/preparacion_datos.py` — dataset: `data/rutas_clase8.csv` (12 ruta
 - Las toneladas por ruta se concentran entre 5.9 y 8.7 t.
 
 **Salida:** `data/rutas_preparadas_ml.csv` (8 columnas, listo para el train/test split).
+
+## Clase 8: Neurona artificial
+
+**`src/neurona_and.py`:** neurona (perceptrón) en Python puro que aprende la compuerta AND ajustando pesos y bias con la regla `w += α·error·x`. Parámetros iniciales w1=0.1, w2=0.1, b=0.0 y tasa de aprendizaje 0.1. Aprendió en **3 épocas**, con error total 3, 3 y 0, y quedó en w1=0.2, w2=0.1, b=-0.2. La curva está en `data/evolucion_error.png`.
+
+**`src/neurona_rutas.py`:** la misma neurona aplicada a las rutas de la empresa (`data/rutas_preparadas_ml.csv`). Dos entradas binarias derivadas de columnas reales:
+- `carga_alta`: 1 si las toneladas están en la mediana o por encima.
+- `ruta_rapida`: 1 si `duracion_ruta_min` está en la mediana o por debajo.
+
+La etiqueta `alto_desempeno` vale 1 cuando se cumplen ambas condiciones. De las 12 rutas, solo la 1 y la 7 lo cumplen. La neurona aprendió en **3 épocas** (error 4, 4 y 0) y clasificó correctamente las 12.
+
+**Limitación:** la etiqueta se define con una regla AND, así que la neurona redescubre esa regla y no un patrón nuevo. El ejercicio sirve para ver el mecanismo de pesos, error y corrección sobre datos del proyecto. Cuando haya un modelo de predicción real, la variable objetivo será `toneladas`, que es continua.
