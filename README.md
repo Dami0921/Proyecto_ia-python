@@ -241,3 +241,40 @@ Script: `src/neuronas_logicas.py`. Gráfica del error: `data/evolucion_error_log
 **¿Qué diferencias hay entre AND y OR?** AND solo da 1 cuando ambas entradas son 1, así que la neurona debe ser "exigente": terminó con un bias negativo (-0.2) y pesos que solo superan el umbral si suman las dos entradas. OR da 1 con que una entrada sea 1, así que basta un umbral bajo: terminó con pesos 0.1 y 0.1 y un bias de solo -0.1, de modo que cualquier entrada activa pasa el umbral. OR aprendió más rápido (2 épocas contra 3) porque los parámetros iniciales ya estaban cerca de la solución, y solo fallaba el caso (0,0). NOT difiere en que tiene una sola entrada y su peso terminó negativo (-0.1), de modo que la entrada 1 resta y apaga la neurona, mientras que con entrada 0 el bias (0.0) alcanza para activarla.
 
 **¿Por qué la compuerta XOR no puede ser aprendida por una sola neurona?** Una neurona con función escalón separa las clases con una única línea recta. En XOR, las salidas 1 están en (0,1) y (1,0), y las salidas 0 en (0,0) y (1,1), es decir, en diagonal. Ninguna recta deja los dos puntos de cada clase del mismo lado, así que XOR no es linealmente separable. Minsky y Papert lo demostraron en 1969 para el perceptrón simple. Se resuelve combinando varias neuronas en capas (una capa oculta), que es la base de las redes neuronales.
+
+## Avance 2
+
+Preparación de datos, visualización y primer modelo (perceptrón desde cero con NumPy). Los datos siguen siendo **ficticios** (12 rutas) con la estructura real de la empresa, mientras se integra el histórico completo.
+
+### Cómo ejecutar con Docker
+```bash
+docker compose up -d
+docker compose exec python bash
+python src/preparacion_datos.py      # limpieza, gráficos y datasets en data/
+cd src && python perceptron_proyecto.py   # perceptrón, curva y frontera
+```
+
+### Preparación de datos (`src/preparacion_datos.py`)
+| | Antes | Después |
+|---|---|---|
+| Filas | 12 | 12 |
+| Columnas | 10 | 12 |
+| Nulos | 3 | 0 |
+| Duplicados | 0 | 0 |
+
+- Nulos en `km_recorridos` (2) y `combustible_tanqueado` (1): imputados con la mediana (63.25 km y 14.0 galones). `toneladas` no se imputa.
+- Sin duplicados, sin valores imposibles y sin atípicos (regla 1.5×IQR); los datos se conservan.
+- `fecha` convertida a fecha y `conductor` normalizado. `pd.get_dummies` para `conductor`.
+- Columnas derivadas: `duracion_ruta_min` y `toneladas_por_km` (esta última se excluye del modelo por data leakage).
+- Salidas: `data/proyecto_limpio.csv`, `data/rutas_preparadas_ml.csv` y `data/tabla_antes_despues.csv`.
+
+### Visualización
+Tres gráficos con Seaborn en `data/`: distribución de toneladas, toneladas por conductor y km vs toneladas.
+
+### Perceptrón (`src/perceptron_proyecto.py`)
+- **Objetivo 0/1:** `1` si `toneladas` supera la mediana (7.65 t). `toneladas` no se usa como entrada.
+- **Entradas:** `km_recorridos` y `duracion_ruta_min`, estandarizadas.
+- **Modelo:** sigmoide, pérdida logarítmica y descenso del gradiente con NumPy (tasa 0.1, 1000 épocas), sin Scikit-Learn.
+- **Resultados:** w1 = 2.971, w2 = 2.110, b = -0.031; pérdida 0.693 → 0.219; exactitud 91.7 %.
+- **Gráficos:** `data/curva_aprendizaje_perceptron.png` y `data/frontera_decision_perceptron.png`.
+- **Interpretación:** ambos pesos son positivos, así que más km y más duración aumentan la probabilidad de alto tonelaje. Los datos son casi linealmente separables, con un punto mal clasificado cerca de la frontera. Limitaciones: pocos datos, una sola frontera lineal y entradas muy correlacionadas.
