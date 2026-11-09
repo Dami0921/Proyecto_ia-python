@@ -1,27 +1,43 @@
 """
 perceptron_proyecto.py
-Perceptrón con sigmoide, pérdida logarítmica y descenso del gradiente,
-implementado solo con NumPy (sin Scikit-Learn).
+Perceptrón con sigmoide, pérdida logarítmica y descenso del gradiente, solo con NumPy.
 
-Problema: clasificar si una ruta de recolección es de ALTO TONELAJE (1) o no (0).
+Problema: clasificar si una ruta será de ALTO TONELAJE (1) o normal (0) usando datos
+conocidos ANTES de la ruta.
+
+Cambios respecto al Avance 2 (versión descriptiva):
+  1. Datos nuevos: data/datos_limpios.csv (salida de preparacion_datos.py).
+  2. División entrenamiento/prueba (75/25): antes se evaluaba con los mismos datos del entrenamiento.
+  3. Umbral de alto tonelaje = mediana del ENTRENAMIENTO (antes, de todos los datos: fuga).
+  4. Estandarización con media y desviación del ENTRENAMIENTO, aplicada igual a la prueba.
+  5. Pesos iniciales pequeños y aleatorios (antes: ceros), con semilla fija.
+  6. Entradas conocidas antes de la ruta (antes: km recorridos y duración, que se conocen después).
+  7. Métricas en prueba (exactitud, recall, matriz de confusión) y curva de pérdida de entrenamiento y prueba.
+
+Entradas: kg_planeados (tamaño del plan de la ruta) y temporada_alta (1 = dic, ene, jun, jul).
+Salidas : graficos/grafico6_perceptron_perdida.png, graficos/grafico7_perceptron_frontera.png
 """
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-DIR_DATA = Path(__file__).resolve().parent.parent / "data"
-RUTA_CSV = DIR_DATA / "proyecto_limpio.csv"
+BASE = Path(__file__).resolve().parent.parent
+RUTA_CSV = BASE / "data" / "datos_limpios.csv"
+DIR_GRAFICOS = BASE / "graficos"
 
-COL_OBJETIVO = "toneladas"          # solo sirve para construir la etiqueta 0/1
-COL_ENTRADAS = ["km_recorridos", "duracion_ruta_min"]
+SEMILLA = 42
 TASA_APRENDIZAJE = 0.1
 EPOCAS = 1000
+MESES_PICO = [12, 1, 6, 7]       # meses de mayor generación observados en el histórico
 
 
 def sigmoide(z):
-    """Función de activación sigmoide: convierte z en una probabilidad (0 a 1)."""
+    """Convierte z en una probabilidad entre 0 y 1."""
     return 1 / (1 + np.exp(-z))
 
 
@@ -31,90 +47,110 @@ def perdida_logaritmica(y, y_hat):
     return -np.mean(y * np.log(y_hat) + (1 - y) * np.log(1 - y_hat))
 
 
-def estandarizar(X):
-    """Estandarización: (x - media) / desviación. Retorna X escalada, media y std."""
-    media = X.mean(axis=0)
-    desviacion = X.std(axis=0)
-    return (X - media) / desviacion, media, desviacion
+def dividir(n, proporcion_prueba=0.25, semilla=SEMILLA):
+    """Índices aleatorios de entrenamiento y prueba."""
+    indices = np.random.default_rng(semilla).permutation(n)
+    corte = int(n * (1 - proporcion_prueba))
+    return indices[:corte], indices[corte:]
 
 
-def entrenar(X, y, tasa=TASA_APRENDIZAJE, epocas=EPOCAS):
-    """Descenso del gradiente. Retorna pesos, bias e historial de pérdida."""
+def entrenar(X, y, X_pru, y_pru, tasa=TASA_APRENDIZAJE, epocas=EPOCAS):
+    """Descenso del gradiente. Guarda la pérdida de entrenamiento y de prueba en cada época."""
     n = X.shape[0]
-    w = np.zeros(X.shape[1])
+    rng = np.random.default_rng(SEMILLA)
+    w = rng.normal(0, 0.1, X.shape[1])      # pesos iniciales pequeños y aleatorios
     b = 0.0
-    historial = []
-
+    perdida_ent, perdida_pru = [], []
     for _ in range(epocas):
-        y_hat = sigmoide(X @ w + b)                       # 1. predicción
-        historial.append(perdida_logaritmica(y, y_hat))   # 2. pérdida
-        error = y_hat - y                                 # 3. gradiente de la pérdida
-        w -= tasa * (X.T @ error) / n                     # 4. actualizar pesos
-        b -= tasa * error.mean()                          #    y bias
-    return w, b, historial
+        y_hat = sigmoide(X @ w + b)                              # 1. predicción
+        perdida_ent.append(perdida_logaritmica(y, y_hat))        # 2. pérdida (entrenamiento)
+        perdida_pru.append(perdida_logaritmica(y_pru, sigmoide(X_pru @ w + b)))  # solo se mide
+        error = y_hat - y                                        # 3. gradiente
+        w -= tasa * (X.T @ error) / n                            # 4. actualizar pesos (solo con entrenamiento)
+        b -= tasa * error.mean()
+    return w, b, perdida_ent, perdida_pru
 
 
-def exactitud(X, y, w, b):
-    """Porcentaje de aciertos con umbral 0.5."""
-    predicciones = (sigmoide(X @ w + b) >= 0.5).astype(int)
-    return (predicciones == y).mean()
+def predecir(X, w, b):
+    return (sigmoide(X @ w + b) >= 0.5).astype(int)
 
 
-def graficar_perdida(historial):
-    plt.figure(figsize=(8, 5))
-    plt.plot(historial, color="tab:red")
+def graficar_perdida(perdida_ent, perdida_pru):
+    DIR_GRAFICOS.mkdir(exist_ok=True)
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(perdida_ent, label="Entrenamiento", color="tab:red")
+    plt.plot(perdida_pru, label="Prueba", color="tab:blue")
     plt.title("Curva de aprendizaje del perceptrón")
     plt.xlabel("Época")
     plt.ylabel("Pérdida logarítmica")
-    plt.grid(True)
+    plt.legend()
+    plt.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(DIR_DATA / "curva_aprendizaje_perceptron.png", dpi=150)
+    plt.savefig(DIR_GRAFICOS / "grafico6_perceptron_perdida.png", dpi=150)
     plt.close()
 
 
 def graficar_frontera(X, y, w, b):
-    plt.figure(figsize=(8, 6))
-    plt.scatter(X[y == 0, 0], X[y == 0, 1], c="tab:blue", s=90, label="Normal (0)")
-    plt.scatter(X[y == 1, 0], X[y == 1, 1], c="tab:orange", s=90, label="Alto tonelaje (1)")
-    # La frontera es donde z = 0  ->  x2 = -(w1*x1 + b) / w2
+    """Frontera de decisión sobre los datos de prueba (variables estandarizadas)."""
+    plt.figure(figsize=(8, 5))
+    plt.scatter(X[y == 0, 0], X[y == 0, 1], c="tab:blue", s=70, label="Normal (0)")
+    plt.scatter(X[y == 1, 0], X[y == 1, 1], c="tab:orange", s=70, label="Alto tonelaje (1)")
     x1 = np.linspace(X[:, 0].min() - 0.5, X[:, 0].max() + 0.5, 100)
-    x2 = -(w[0] * x1 + b) / w[1]
-    plt.plot(x1, x2, "k--", label="Frontera de decisión")
+    plt.plot(x1, -(w[0] * x1 + b) / w[1], "k--", label="Frontera (z = 0)")
     plt.ylim(X[:, 1].min() - 0.5, X[:, 1].max() + 0.5)
-    plt.title("Frontera de decisión (variables estandarizadas)")
-    plt.xlabel("Km recorridos (estandarizado)")
-    plt.ylabel("Duración de ruta (estandarizada)")
+    plt.title("Frontera de decisión en prueba (variables estandarizadas)")
+    plt.xlabel("kg planeados (estandarizado)")
+    plt.ylabel("Temporada alta (estandarizada)")
     plt.legend()
-    plt.grid(True)
+    plt.grid(alpha=0.3)
     plt.tight_layout()
-    plt.savefig(DIR_DATA / "frontera_decision_perceptron.png", dpi=150)
+    plt.savefig(DIR_GRAFICOS / "grafico7_perceptron_frontera.png", dpi=150)
     plt.close()
 
 
 def main():
     df = pd.read_csv(RUTA_CSV)
+    df["temporada_alta"] = df["mes"].isin(MESES_PICO).astype(int)
+    entradas = df[["kg_planeados", "temporada_alta"]].to_numpy(dtype=float)
+    toneladas = df["toneladas"].to_numpy()
 
-    # Variable objetivo 0/1: ruta de alto tonelaje si supera la mediana
-    umbral = df[COL_OBJETIVO].median()
-    y = (df[COL_OBJETIVO] > umbral).astype(int).to_numpy()
-    print(f"Umbral (mediana de toneladas): {umbral} t")
-    print(f"Rutas: {len(y)} | alto tonelaje (1): {y.sum()} | normal (0): {(y == 0).sum()}")
+    # 1. Dividir primero
+    i_ent, i_pru = dividir(len(df))
+    X_ent, X_pru = entradas[i_ent], entradas[i_pru]
 
-    X, media, desviacion = estandarizar(df[COL_ENTRADAS].to_numpy(dtype=float))
+    # 2. Umbral y estandarización con datos de ENTRENAMIENTO únicamente
+    umbral = np.median(toneladas[i_ent])
+    y_ent = (toneladas[i_ent] > umbral).astype(int)
+    y_pru = (toneladas[i_pru] > umbral).astype(int)
+    media, desviacion = X_ent.mean(axis=0), X_ent.std(axis=0)
+    X_ent = (X_ent - media) / desviacion
+    X_pru = (X_pru - media) / desviacion
+    print(f"Entrenamiento: {len(y_ent)} filas | prueba: {len(y_pru)} filas")
+    print(f"Umbral (mediana de entrenamiento): {umbral:.2f} t")
 
-    w, b, historial = entrenar(X, y)
+    # 3. Entrenar
+    w, b, perdida_ent, perdida_pru = entrenar(X_ent, y_ent, X_pru, y_pru)
 
+    # 4. Evaluar en prueba
+    pred = predecir(X_pru, w, b)
+    vp = int(((pred == 1) & (y_pru == 1)).sum())
+    vn = int(((pred == 0) & (y_pru == 0)).sum())
+    fp = int(((pred == 1) & (y_pru == 0)).sum())
+    fn = int(((pred == 0) & (y_pru == 1)).sum())
     print("\nRESULTADOS")
-    print(f"  w1 (km_recorridos):     {w[0]:.3f}")
-    print(f"  w2 (duracion_ruta_min): {w[1]:.3f}")
-    print(f"  b:                      {b:.3f}")
-    print(f"  Pérdida inicial: {historial[0]:.3f}")
-    print(f"  Pérdida final:   {historial[-1]:.3f}")
-    print(f"  Exactitud:       {exactitud(X, y, w, b):.1%}")
+    print(f"  w1 (kg_planeados):    {w[0]:.3f}")
+    print(f"  w2 (temporada_alta):  {w[1]:.3f}")
+    print(f"  b:                    {b:.3f}")
+    print(f"  Pérdida entrenamiento: {perdida_ent[0]:.3f} -> {perdida_ent[-1]:.3f}")
+    print(f"  Pérdida prueba:        {perdida_pru[0]:.3f} -> {perdida_pru[-1]:.3f}")
+    print(f"  Exactitud entrenamiento: {(predecir(X_ent, w, b) == y_ent).mean():.1%}")
+    print(f"  Exactitud prueba:        {(pred == y_pru).mean():.1%}")
+    print(f"  Recall prueba (alto):    {vp / (vp + fn):.1%}")
+    print(f"  Matriz de confusión prueba [[VN, FP], [FN, VP]]: [[{vn}, {fp}], [{fn}, {vp}]]")
 
-    graficar_perdida(historial)
-    graficar_frontera(X, y, w, b)
-    print("\nGráficos guardados en data/.")
+    graficar_perdida(perdida_ent, perdida_pru)
+    graficar_frontera(X_pru, y_pru, w, b)
+    print("\nGráficos guardados en graficos/.")
 
 
 if __name__ == "__main__":
