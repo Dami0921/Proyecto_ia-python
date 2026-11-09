@@ -1,204 +1,170 @@
 """
 preparacion_datos.py
-Carga, diagnóstico, limpieza y preparación de datos de rutas de recolección para ML.
+Limpieza y preparación del histórico de rutas de recolección (Cartago, Valle del Cauca).
+
+Entrada : data/datos_originales.csv  (estructura del Excel de la empresa; datos SIMULADOS)
+Salidas : data/datos_limpios.csv     (dataset listo para modelar)
+          graficos/*.png             (3 gráficos de análisis con Seaborn)
+
+Criterio de diseño: aquí solo se corrigen errores de digitación y de formato.
+Las imputaciones que "aprenden" de los datos (medianas, escalado) NO se hacen aquí,
+sino dentro del Pipeline de modelo_proyecto.py y solo con datos de entrenamiento,
+para evitar fuga de información (data leakage).
 """
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")  # guarda gráficos sin pantalla (contenedor Docker)
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-# Las rutas se calculan desde este archivo, así funciona desde cualquier carpeta
-RUTA_CSV = Path(__file__).resolve().parent.parent / "data" / "rutas_clase8.csv"
-DIR_DATA = RUTA_CSV.parent
-sns.set_theme(style="whitegrid", context="talk")
+BASE = Path(__file__).resolve().parent.parent
+RUTA_ORIGINAL = BASE / "data" / "datos_originales.csv"
+RUTA_LIMPIO = BASE / "data" / "datos_limpios.csv"
+DIR_GRAFICOS = BASE / "graficos"
 
-COLUMNAS_NUMERICAS = ["toneladas", "km_recorridos", "combustible_tanqueado"]
-
-
-def cargar_datos(ruta_csv):
-    """Carga el CSV y retorna un DataFrame (o None si no existe)."""
-    try:
-        df = pd.read_csv(ruta_csv)
-    except FileNotFoundError:
-        print(f"Error: no existe '{ruta_csv}'.")
-        return None
-    print(f"Datos cargados: {df.shape[0]} filas, {df.shape[1]} columnas.")
-    return df
+KG_MAXIMO = 20000          # un camión compactador no carga más de ~20 t en una ruta
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 
-def explorar_datos(df):
-    """Muestra información general y estadísticas descriptivas."""
-    print("\nPRIMERAS 5 FILAS:")
-    print(df.head())
-    print("\nINFORMACIÓN GENERAL:")
-    df.info()
-    print("\nESTADÍSTICAS DESCRIPTIVAS:")
-    print(df.describe())
-    print("\nVALORES NULOS POR COLUMNA:")
-    print(df.isnull().sum())
-    print(f"\nFILAS DUPLICADAS: {df.duplicated().sum()}")
+def a_minutos(serie):
+    """Convierte texto 'H:MM' (hora o duración) en minutos; vacío -> NaN."""
+    partes = serie.str.split(":", expand=True).apply(pd.to_numeric, errors="coerce")
+    return partes[0] * 60 + partes[1]
 
 
-def diagnosticar_calidad(df):
-    """Revisa tipos, categorías, valores imposibles y atípicos (sin modificar nada)."""
-    print("\nDIAGNÓSTICO DE CALIDAD")
+def cargar_datos(ruta=RUTA_ORIGINAL):
+    """Lee el CSV original sin modificarlo (las fechas llegan como texto dd/mm/aaaa)."""
+    return pd.read_csv(ruta)
 
-    # 1. Tipos de datos: fecha y horas llegan como texto
-    print("\n1. Tipos de datos (fecha y horas deberían ser fecha/hora):")
-    print(df[["fecha", "hora_salida_base", "hora_inicio_ruta", "hora_fin_ruta"]].dtypes)
 
-    # 2. Categorías inconsistentes: espacios o mayúsculas distintas
-    print("\n2. Categorías de 'conductor' (valores únicos):")
-    print(df["conductor"].value_counts())
-    normalizado = df["conductor"].str.strip().str.title()
-    print(f"   Sin normalizar: {df['conductor'].nunique()} | "
-          f"normalizado: {normalizado.nunique()}")
-
-    # 3. Valores imposibles
-    inicio = pd.to_datetime(df["hora_inicio_ruta"], format="%H:%M")
-    fin = pd.to_datetime(df["hora_fin_ruta"], format="%H:%M")
-    print("\n3. Valores imposibles:")
-    print(f"   toneladas <= 0:        {(df['toneladas'] <= 0).sum()}")
-    print(f"   km_recorridos <= 0:    {(df['km_recorridos'] <= 0).sum()}")
-    print(f"   tripulantes <= 0:      {(df['tripulantes'] <= 0).sum()}")
-    print(f"   hora_fin <= hora_ini:  {(fin <= inicio).sum()}")
-
-    # 4. Atípicos con el rango intercuartílico (IQR)
-    print("\n4. Atípicos (regla 1.5 x IQR):")
-    for columna in COLUMNAS_NUMERICAS:
-        q1, q3 = df[columna].quantile([0.25, 0.75])
-        iqr = q3 - q1
-        atipicos = df[(df[columna] < q1 - 1.5 * iqr) | (df[columna] > q3 + 1.5 * iqr)]
-        print(f"   {columna}: {len(atipicos)} atípicos")
+def diagnosticar(df):
+    """Muestra la evidencia de cada problema de calidad antes de corregirlo."""
+    print("=== Diagnóstico de calidad ===")
+    print(f"Forma: {df.shape}")
+    print(f"Filas completamente duplicadas: {df.duplicated().sum()}")
+    print(f"Tickets de báscula repetidos:   {df['TICKET DE BASCULA'].duplicated().sum()}")
+    print(f"Viajes de apoyo (APOYO = X):    {(df['APOYO'] == 'X').sum()}")
+    print("Valores de DIA:", sorted(df["DIA"].unique()))
+    print("Nulos por columna (solo las que tienen):")
+    nulos = df.isnull().sum()
+    print(nulos[nulos > 0].to_string())
+    kg = df["KILOGRAMOS RECOLECTADOS"]
+    print(f"Kilogramos: mín {kg.min():,.0f} | mediana {kg.median():,.0f} | máx {kg.max():,.0f}")
+    print(df.loc[kg > KG_MAXIMO, ["FECHA", "RUTA", "KILOGRAMOS RECOLECTADOS"]].to_string())
 
 
 def limpiar_datos(df):
-    """Elimina duplicados, corrige tipos y categorías, imputa nulos y crea derivadas."""
-    df_limpio = df.copy()
+    """Corrige los problemas de calidad documentados. Devuelve el DataFrame y un resumen."""
+    resumen = {"filas_originales": len(df)}
+    df = df.copy()
 
-    # 1. Duplicados
-    antes = len(df_limpio)
-    df_limpio = df_limpio.drop_duplicates()
-    print(f"Duplicados eliminados: {antes - len(df_limpio)}")
+    # 1. Filas duplicadas (mismo registro digitado dos veces)
+    antes = len(df)
+    df = df.drop_duplicates()
+    resumen["duplicados_eliminados"] = antes - len(df)
 
-    # 2. Tipos: fecha como datetime
-    df_limpio["fecha"] = pd.to_datetime(df_limpio["fecha"], format="%Y-%m-%d")
+    # 2. Viajes de apoyo: otro tipo de servicio (pocos kg, sin viaje al relleno)
+    antes = len(df)
+    df = df[df["APOYO"].fillna("") != "X"]
+    resumen["apoyos_excluidos"] = antes - len(df)
 
-    # 3. Categorías: quitar espacios y unificar mayúsculas
-    df_limpio["conductor"] = df_limpio["conductor"].str.strip().str.title()
+    # 3. Kilogramos imposibles (error de digitación): se eliminan, la variable objetivo no se imputa
+    antes = len(df)
+    df = df[df["KILOGRAMOS RECOLECTADOS"] <= KG_MAXIMO]
+    resumen["kg_imposibles_eliminados"] = antes - len(df)
 
-    # 4. Nulos: mediana en variables de entrada (no se imputa 'toneladas')
-    for columna in ["km_recorridos", "combustible_tanqueado"]:
-        mediana = df_limpio[columna].median()
-        df_limpio[columna] = df_limpio[columna].fillna(mediana)
-        print(f"Nulos de '{columna}' imputados con la mediana: {mediana}")
-
-    # 5. Columnas derivadas
-    inicio = pd.to_datetime(df_limpio["hora_inicio_ruta"], format="%H:%M")
-    fin = pd.to_datetime(df_limpio["hora_fin_ruta"], format="%H:%M")
-    df_limpio["duracion_ruta_min"] = (fin - inicio).dt.total_seconds() / 60
-    df_limpio["toneladas_por_km"] = df_limpio["toneladas"] / df_limpio["km_recorridos"]
-    print("Columnas 'duracion_ruta_min' y 'toneladas_por_km' creadas.")
-
-    return df_limpio
+    resumen["filas_finales"] = len(df)
+    return df.reset_index(drop=True), resumen
 
 
-def tabla_antes_despues(df_original, df_limpio):
-    """Tabla comparativa: filas, columnas y nulos antes y después de limpiar."""
-    tabla = pd.DataFrame({
-        "Antes": [df_original.shape[0], df_original.shape[1],
-                  int(df_original.isnull().sum().sum()), int(df_original.duplicated().sum())],
-        "Después": [df_limpio.shape[0], df_limpio.shape[1],
-                    int(df_limpio.isnull().sum().sum()), int(df_limpio.duplicated().sum())],
-    }, index=["Filas", "Columnas", "Nulos (total)", "Duplicados"])
-    print("\nTABLA ANTES / DESPUÉS:")
-    print(tabla)
-    tabla.to_csv(DIR_DATA / "tabla_antes_despues.csv")
-    return tabla
+def construir_variables(df):
+    """Convierte tipos y crea las variables del modelo (sin imputar nada)."""
+    fecha = pd.to_datetime(df["FECHA"], format="%d/%m/%Y")
+    hora_inicio = a_minutos(df["HORA DE INICIO DE RUTA"])
+    limpio = pd.DataFrame({
+        "fecha": fecha,
+        "mes": fecha.dt.month,
+        "dia_semana": fecha.dt.day_of_week,                    # 0 = lunes; reemplaza la columna DIA digitada
+        "ruta": df["RUTA"].astype(str),
+        "vehiculo": df["VEHICULO"].astype(str),
+        "turno_noche": ((hora_inicio >= 18 * 60) | (hora_inicio < 5 * 60)).astype(int),
+        "n_tripulantes": df["TRIPULANTES"].str.split("-").str.len(),
+        "compactado": df["COMPACTADO"],
+        "kg_planeados": df["KG PLANEADOS"],
+        "km_planeados": df["KM PLANEADOS"],
+        "t_ruta_planeado_min": a_minutos(df["T. RUTA PLANEADO"]),
+        "toneladas": df["KILOGRAMOS RECOLECTADOS"] / 1000,
+        "km_recorridos": df["KM RECORRIDOS"],
+        "tiempo_ruta_min": a_minutos(df["TIEMPOS DE RUTA"]),
+        "tiempo_total_min": a_minutos(df["TIEMPO TOTAL"]),
+        "combustible_gal": df["COMBUSTIBLE"],
+    })
+    return limpio
 
 
-def visualizar_datos(df):
-    """Genera 3 visualizaciones con Seaborn y las guarda en data/."""
+def graficar(df):
+    """Tres gráficos de análisis con Seaborn en graficos/."""
+    DIR_GRAFICOS.mkdir(exist_ok=True)
+    sns.set_theme(style="whitegrid")
+    nombres_mes = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
-    # 1. Distribución de toneladas recolectadas
-    plt.figure(figsize=(8, 5))
-    sns.histplot(data=df, x="toneladas", bins=6, kde=True, color="skyblue")
-    plt.title("Distribución de Toneladas por Ruta")
-    plt.xlabel("Toneladas")
-    plt.ylabel("Frecuencia")
+    # Gráfico 1: estacionalidad (toneladas promedio por mes)
+    plt.figure(figsize=(8, 4.5))
+    por_mes = df.groupby("mes")["toneladas"].mean().reindex(range(1, 13))
+    sns.barplot(x=nombres_mes, y=por_mes.values, color="tab:green")
+    plt.axhline(df["toneladas"].median(), color="black", linestyle="--", label="Mediana (umbral)")
+    plt.title("Toneladas promedio por mes")
+    plt.xlabel("Mes")
+    plt.ylabel("Toneladas por ruta")
+    plt.legend()
     plt.tight_layout()
-    plt.savefig(DIR_DATA / "distribucion_toneladas_clase8.png", dpi=150)
+    plt.savefig(DIR_GRAFICOS / "grafico1_toneladas_por_mes.png", dpi=150)
     plt.close()
 
-    # 2. Total de toneladas por conductor
-    plt.figure(figsize=(9, 6))
-    sns.barplot(data=df, x="conductor", y="toneladas", estimator="sum",
-                errorbar=None, hue="conductor", palette="viridis", legend=False)
-    plt.title("Toneladas Totales por Conductor")
-    plt.xlabel("Conductor")
+    # Gráfico 2: distribución de toneladas por ruta
+    plt.figure(figsize=(8, 4.5))
+    orden = sorted(df["ruta"].unique())
+    sns.boxplot(data=df, x="ruta", y="toneladas", order=orden, color="tab:green")
+    plt.title("Toneladas recolectadas por ruta")
+    plt.xlabel("Ruta")
     plt.ylabel("Toneladas")
     plt.tight_layout()
-    plt.savefig(DIR_DATA / "toneladas_por_conductor.png", dpi=150)
+    plt.savefig(DIR_GRAFICOS / "grafico2_toneladas_por_ruta.png", dpi=150)
     plt.close()
 
-    # 3. Relación entre km recorridos y toneladas (entrada vs objetivo)
-    plt.figure(figsize=(9, 6))
-    sns.scatterplot(data=df, x="km_recorridos", y="toneladas",
-                    hue="conductor", s=120)
-    plt.title("Km Recorridos vs Toneladas")
-    plt.xlabel("Km recorridos")
+    # Gráfico 3: relación duración de la ruta vs toneladas, por turno
+    plt.figure(figsize=(8, 4.5))
+    sns.scatterplot(data=df, x="tiempo_ruta_min", y="toneladas", hue="turno_noche",
+                    palette="Set1", s=60)
+    plt.title("Duración de la ruta vs toneladas")
+    plt.xlabel("Duración de la ruta (min)")
     plt.ylabel("Toneladas")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.legend(title="Turno noche (1 = sí)")
     plt.tight_layout()
-    plt.savefig(DIR_DATA / "km_vs_toneladas_clase8.png", dpi=150)
+    plt.savefig(DIR_GRAFICOS / "grafico3_duracion_vs_toneladas.png", dpi=150)
     plt.close()
-
-    print("\nGráficos guardados en data/.")
-
-
-def preparar_ml(df):
-    """Prepara el DataFrame para ML: codificación y selección de columnas."""
-    df_ml = df.copy()
-
-    # One-Hot Encoding para 'conductor' (variable nominal)
-    df_ml = pd.get_dummies(df_ml, columns=["conductor"], prefix="cond", dtype=int)
-    print("\nCodificación One-Hot aplicada a 'conductor'.")
-
-    columnas_a_eliminar = [
-        "ruta_id",            # identificador, sin valor predictivo
-        "fecha",
-        "hora_salida_base",
-        "hora_inicio_ruta",
-        "hora_fin_ruta",
-        "toneladas_por_km",   # se calcula con 'toneladas': data leakage
-    ]
-    df_ml = df_ml.drop(columns=columnas_a_eliminar, errors="ignore")
-
-    print(f"Forma final: {df_ml.shape[0]} filas, {df_ml.shape[1]} columnas.")
-    return df_ml
+    print(f"Gráficos guardados en {DIR_GRAFICOS.name}/")
 
 
 def main():
-    df = cargar_datos(RUTA_CSV)
-    if df is None:
-        return
-    explorar_datos(df)
-    diagnosticar_calidad(df)
-
-    df_limpio = limpiar_datos(df)
-    tabla_antes_despues(df, df_limpio)
-
-    # Dataset limpio para análisis y para el perceptrón
-    df_limpio.to_csv(DIR_DATA / "proyecto_limpio.csv", index=False)
-    print(f"\nDataset limpio guardado en '{DIR_DATA / 'proyecto_limpio.csv'}'.")
-
-    visualizar_datos(df_limpio)
-
-    df_ml = preparar_ml(df_limpio)
-    df_ml.to_csv(DIR_DATA / "rutas_preparadas_ml.csv", index=False)
-    print(f"Dataset para ML guardado en '{DIR_DATA / 'rutas_preparadas_ml.csv'}'.")
-    print("Proceso completado exitosamente.")
+    original = cargar_datos()
+    diagnosticar(original)
+    limpio, resumen = limpiar_datos(original)
+    print("\n=== Resumen de la limpieza ===")
+    for clave, valor in resumen.items():
+        print(f"{clave}: {valor}")
+    df = construir_variables(limpio)
+    print("\n=== Dataset limpio ===")
+    print(df.dtypes)
+    print("Nulos restantes (se imputan dentro del Pipeline, solo con entrenamiento):")
+    print(df.isnull().sum()[df.isnull().sum() > 0].to_string())
+    print(f"Toneladas: mediana {df['toneladas'].median():.2f} | mín {df['toneladas'].min():.2f} | máx {df['toneladas'].max():.2f}")
+    df.to_csv(RUTA_LIMPIO, index=False)
+    print(f"\nGuardado: {RUTA_LIMPIO}")
+    graficar(df)
 
 
 if __name__ == "__main__":

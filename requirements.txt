@@ -1,6 +1,7 @@
-numpy 
-pandas 
-matplotlib 
-scikit-learn 
-jupyter 
-seaborn 
+numpy
+pandas
+matplotlib
+seaborn
+scikit-learn
+joblib
+openpyxl
