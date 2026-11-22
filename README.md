@@ -28,7 +28,7 @@ que el supervisor pueda reasignar vehículos o redefinir rutas con anticipación
 | 11 viajes de apoyo (`APOYO = X`) | Se excluyen: son otro servicio |
 | 1 valor de 98.700 kg (cero de más) | Se elimina; la variable objetivo no se imputa |
 | Día escrito de formas distintas | Se recalcula desde la fecha |
-| Nulos en combustible | Se imputan dentro del `Pipeline`, solo con datos de entrenamiento |
+| Nulos en combustible | Se dejan sin imputar: no son variables predictoras |
 
 Resultado: 120 → **107 filas**.
 
@@ -48,6 +48,7 @@ Resultado: 120 → **107 filas**.
 │   ├── generar_datos_simulados.py
 │   ├── preparacion_datos.py     limpieza + 3 gráficos de análisis
 │   ├── perceptron_proyecto.py   perceptrón con NumPy
+│   ├── comparar_perceptron_sklearn.py perceptrón vs LogisticRegression (mismas entradas)
 │   ├── modelo_proyecto.py       modelos scikit-learn, validación cruzada, joblib
 │   ├── usar_modelo.py           predicción de casos nuevos
 │   └── modelo_final.joblib      modelo entrenado
@@ -63,6 +64,7 @@ cd Proyecto_ia-python
 docker compose up -d --build
 docker compose exec python python src/preparacion_datos.py
 docker compose exec python python src/perceptron_proyecto.py
+docker compose exec -w /app/src python python comparar_perceptron_sklearn.py
 docker compose exec python python src/modelo_proyecto.py
 docker compose exec python python src/usar_modelo.py
 ```
@@ -108,11 +110,10 @@ Exactitud: 88.8 % en entrenamiento y 88.9 % en prueba; matriz de confusión en p
 
 ## 8. Cambios respecto al Avance 2
 Datos nuevos, división entrenamiento/prueba, umbral y escalado calculados solo con entrenamiento, pesos
-iniciales aleatorios, entradas conocidas antes de la ruta y métricas en prueba. [Completar con la
-retroalimentación recibida del docente.]
+iniciales aleatorios, entradas conocidas antes de la ruta y métricas en prueba. Para el Avance 2 no se dispuso de retroalimentación del docente; las correcciones aplicadas se definieron a partir de la Guía de la Clase 12 y de los lineamientos del proyecto.
 
 ## 9. Equipo y contribuciones
-[Completar: quién hizo qué.] El repositorio se administró desde la cuenta de Damián Correa, según lo acordado
+El repositorio se administró desde la cuenta de Damián Correa, según lo acordado
 con el docente.
 
 ## 10. Uso de inteligencia artificial

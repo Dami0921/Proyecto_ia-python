@@ -23,8 +23,9 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (ConfusionMatrixDisplay, classification_report,
-                             confusion_matrix)
+from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
+                             classification_report, confusion_matrix,
+                             f1_score, precision_score, recall_score)
 from sklearn.model_selection import (StratifiedKFold, cross_validate,
                                      learning_curve, train_test_split)
 from sklearn.pipeline import Pipeline
@@ -100,6 +101,18 @@ def main():
     print(classification_report(y_pru, pred, target_names=["normal", "alto"], digits=3))
     print("Matriz de confusión [[VN, FP], [FN, VP]]:")
     print(confusion_matrix(y_pru, pred))
+
+    # 4b. Los tres modelos en prueba (informativo: la elección se hizo con validación cruzada, no con la prueba)
+    filas_prueba = []
+    for nombre, modelo in modelos.items():
+        pred_m = crear_pipeline(modelo).fit(X_ent, y_ent).predict(X_pru)
+        filas_prueba.append({"modelo": nombre,
+                             "exactitud": accuracy_score(y_pru, pred_m),
+                             "precision": precision_score(y_pru, pred_m),
+                             "recall": recall_score(y_pru, pred_m),
+                             "f1": f1_score(y_pru, pred_m)})
+    print("\n=== Los tres modelos en el conjunto de prueba (solo informativo) ===")
+    print(pd.DataFrame(filas_prueba).set_index("modelo").round(3).to_string())
 
     # 5. Gráficos de evaluación
     DIR_GRAFICOS.mkdir(exist_ok=True)

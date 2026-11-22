@@ -159,7 +159,7 @@ def main():
     df = construir_variables(limpio)
     print("\n=== Dataset limpio ===")
     print(df.dtypes)
-    print("Nulos restantes (se imputan dentro del Pipeline, solo con entrenamiento):")
+    print("Nulos restantes (combustible no es variable predictora; el Pipeline imputa con la mediana de entrenamiento si falta algún dato):")
     print(df.isnull().sum()[df.isnull().sum() > 0].to_string())
     print(f"Toneladas: mediana {df['toneladas'].median():.2f} | mín {df['toneladas'].min():.2f} | máx {df['toneladas'].max():.2f}")
     df.to_csv(RUTA_LIMPIO, index=False)
